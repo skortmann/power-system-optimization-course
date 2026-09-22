@@ -178,7 +178,7 @@ def check_commercial() -> dict[str, bool]:
     found: dict[str, bool] = {}
     import pyomo.environ as pyo
 
-    for label, solver in [("Gurobi", "gurobi_direct"), ("CPLEX", "cplex_direct")]:
+    for label, solver in [("Gurobi (appsi)", "appsi_gurobi"), ("CPLEX", "cplex_direct")]:
         try:
             opt = pyo.SolverFactory(solver)
             ok = bool(opt.available(exception_flag=False))

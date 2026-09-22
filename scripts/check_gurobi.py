@@ -168,7 +168,7 @@ def through_pyomo() -> None:
     import pyomo.environ as pyo
 
     print("\nVia Pyomo")
-    for name in ("gurobi_direct", "gurobi"):
+    for name in ("appsi_gurobi", "gurobi_direct", "gurobi"):
         try:
             opt = pyo.SolverFactory(name)
             ok = bool(opt.available(exception_flag=False))

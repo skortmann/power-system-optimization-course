@@ -56,28 +56,51 @@ ProblemClass = Literal[
 
 #: Which Pyomo solver to try for each class, in order of preference.
 #:
+#: ``appsi_gurobi``, NOT ``gurobi`` or ``gurobi_direct``. A measured correctness
+#: requirement rather than a style preference: on the course's SOC branch-flow
+#: model -- the rotated cone ``P^2 + Q^2 <= u * ell`` -- the legacy interfaces
+#: return an unmapped ``other`` termination AND an objective above the optimum::
+#:
+#:     gurobi          other     0.115235 MW
+#:     gurobi_direct   other     0.103718 MW
+#:     appsi_gurobi    optimal   0.098836 MW
+#:     ipopt           optimal   0.098795 MW
+#:
+#: The last two agree to 0.04%. A silently wrong objective from a CONVEX program
+#: is the worst failure mode in this course, because every bound downstream
+#: inherits it.
+#:
 #: HiGHS leads for LP and MILP because it is excellent at both and needs no
 #: licence. Gurobi leads wherever the cone or the quadratic objective is the
 #: point. Every row ends in an open-source option except MISOCP, which is
 #: flagged below.
 _PREFERENCE: dict[str, tuple[str, ...]] = {
-    "LP": ("appsi_highs", "gurobi_direct", "ipopt"),
-    "MILP": ("appsi_highs", "gurobi_direct"),
+    "LP": ("appsi_highs", "appsi_gurobi", "ipopt"),
+    "MILP": ("appsi_highs", "appsi_gurobi"),
     # Pyomo's HiGHS interface cannot take a quadratic objective at all.
-    "QP": ("gurobi_direct", "ipopt"),
-    "MIQP": ("gurobi_direct",),
+    "QP": ("appsi_gurobi", "ipopt"),
+    "MIQP": ("appsi_gurobi",),
     "NLP": ("ipopt",),
-    "MINLP": ("gurobi_direct", "ipopt"),
-    # Written as a convex QCQP in Pyomo. Gurobi recognises the rotated cone and
-    # gives conic duals; IPOPT solves the same model as a convex NLP, where a
-    # local optimum is global. The pure conic route via CVXPY/Clarabel lives in
-    # `psopt_course.relaxations`.
-    "SOCP": ("gurobi_direct", "ipopt"),
+    "MINLP": ("appsi_gurobi", "ipopt"),
+    # IPOPT FIRST, and this one is measured too. Written as a convex QCQP, the
+    # course's SOC branch-flow model goes through Pyomo's Gurobi bridges badly:
+    # the legacy interfaces return a wrong objective (see above) and the appsi
+    # one returns `unknown` with no feasible solution on half of an eight-case
+    # sweep. IPOPT solved all eight, monotonically in the amount of control
+    # installed, with cone residuals of 4e-07 throughout.
+    #
+    # This is a statement about the BRIDGE and this formulation, not about
+    # Gurobi, which is an excellent conic solver. It is kept as the fallback,
+    # and MISOCP still goes to it because there is no alternative.
+    #
+    # Convexity is what makes IPOPT's answer trustworthy here: a local optimum
+    # of a convex program is the global one.
+    "SOCP": ("ipopt", "appsi_gurobi"),
     # The one class with no open-source route in this stack. Tutorial 08 uses it
     # only for the *reference* monolithic solve that Benders is checked against;
     # the decomposition itself never needs it, because fixing the master leaves
     # a continuous SOCP. `solver_for` says exactly this when it cannot find one.
-    "MISOCP": ("gurobi_direct",),
+    "MISOCP": ("appsi_gurobi",),
 }
 
 #: Classes for which no open-source solver exists in this stack.

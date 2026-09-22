@@ -51,6 +51,11 @@ jobs:
         # "No executable found for solver 'ipopt'". idaes-pse distributes
         # prebuilt binaries and is the reliable route.
         run: |
+          # The prebuilt IPOPT links against LAPACK and BLAS, which are not on
+          # a bare runner. Without them the binary installs and then dies with
+          #   ipopt: error while loading shared libraries: liblapack.so.3
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends liblapack3 libblas3 libgfortran5
           uv pip install idaes-pse
           uv run idaes get-extensions --verbose
           echo "$HOME/.idaes/bin" >> "$GITHUB_PATH"
@@ -85,9 +90,17 @@ jobs:
 
       - name: Install IPOPT
         run: |
+          # The prebuilt IPOPT links against LAPACK and BLAS, which are not on
+          # a bare runner. Without them the binary installs and then dies with
+          #   ipopt: error while loading shared libraries: liblapack.so.3
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends liblapack3 libblas3 libgfortran5
           uv pip install idaes-pse
           uv run idaes get-extensions --verbose
           echo "$HOME/.idaes/bin" >> "$GITHUB_PATH"
+
+      - name: Confirm IPOPT is on PATH
+        run: ipopt --version
 
       - name: Build and execute the solution notebooks
         run: |

@@ -376,7 +376,7 @@ for definition in ("linear", "soc", "exact"):
         runs[definition] = {"history": history, "y": y_star, "value": value}
         print(f"  converged to y = {''.join(map(str, y_star))}, total = {value:.8f}, "
               f"{len(history.iterations)} iterations")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"  FAILED: {type(exc).__name__}: {str(exc)[:160]}")
         runs[definition] = None
 

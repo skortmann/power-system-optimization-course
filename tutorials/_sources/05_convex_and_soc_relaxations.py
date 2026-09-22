@@ -609,6 +609,7 @@ investment = None
 # %% tags=["solution"]
 import itertools
 
+
 def subproblem_loss(pattern):
     """Loss-minimising SOC subproblem with Q control installed where pattern is 1."""
     model = SOCBFM(copy.deepcopy(net), current_definition="soc")

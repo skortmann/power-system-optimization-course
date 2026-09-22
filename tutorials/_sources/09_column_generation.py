@@ -750,7 +750,7 @@ print("Checks passed: LP <= DW <= MILP <= heuristic.")
 # %% tags=["solution"]
 print("ANSWER.")
 print()
-print(f"Column generation converged perfectly: it solved the LP over ALL columns")
+print("Column generation converged perfectly: it solved the LP over ALL columns")
 print(f"to {cg_record.objective:,.4f}, proved by the absence of any negative reduced")
 print(f"cost. The integer recovery came out at {recovery_record.objective:,.4f}, which is")
 print(f"{heuristic_gap:.2%} above the true optimum of {milp_record.objective:,.4f}.")

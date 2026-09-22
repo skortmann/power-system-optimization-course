@@ -457,7 +457,7 @@ print("ANSWER. No, and it is not supposed to.")
 print()
 print(f"At epsilon = 0.05 each generator's limit was violated about "
       f"{row['worst individual']:.3f} of")
-print(f"the time -- close to what was asked. But the JOINT violation, the")
+print("the time -- close to what was asked. But the JOINT violation, the")
 print(f"probability that ANY limit fails, was {row['JOINT']:.3f}, with a 95%")
 print(f"confidence interval of [{row['joint CI low']:.4f}, {row['joint CI high']:.4f}].")
 print()

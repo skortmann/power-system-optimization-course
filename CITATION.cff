@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+title: >-
+  From Economic Dispatch to Large-Scale Grid Optimization:
+  Hands-On Mathematical Optimization for Power Systems
+message: If you use this course, please cite it.
+type: software
+authors:
+  - given-names: Steffen
+    family-names: Kortmann
+    email: steffen.kortmann@fit.fraunhofer.de
+repository-code: https://github.com/skortmann/power-system-optimization-course
+license: MIT
+keywords:
+  - power systems
+  - mathematical optimization
+  - optimal power flow
+  - convex relaxation
+  - second-order cone programming
+  - Benders decomposition
+  - column generation
+  - Pyomo

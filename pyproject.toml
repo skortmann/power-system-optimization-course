@@ -109,6 +109,9 @@ ignore = [
 # cells, long formula lines.
 "tutorials/_sources/*.py" = [
     "F821", "E501", "E402", "B007", "SIM", "F811", "F401", "RUF001", "RUF003",
+    # Notebook idioms: unpacking a tuple and using part of it, and a defensive
+    # int() around a value that is already integral.
+    "RUF059", "RUF046",
 ]
 
 [tool.pytest.ini_options]

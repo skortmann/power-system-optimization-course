@@ -480,7 +480,7 @@ from potpourri.benchmarks import pglib
 available = []
 try:
     available = list(pglib.list_available_cases())
-except Exception as exc:  # noqa: BLE001
+except Exception as exc:
     print(f"PGLib loader raised: {type(exc).__name__}")
 
 if available:

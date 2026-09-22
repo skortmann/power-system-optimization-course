@@ -656,14 +656,20 @@ assert (gap_sweep["integrality gap"] >= -1e-9).all()
 # the swept parameter did not drive the gap at all and the "widening" gap was
 # in fact shrinking from 0.30% to 0.28%.
 _gaps = gap_sweep["integrality gap"].to_numpy()
-assert _gaps[0] < 1e-6, (
-    f"with no start-up cost the relaxation should be tight, got {_gaps[0]:.4%}"
+# The claim is that start-up cost WIDENS the gap, so test the widening. Do not
+# also assert that the gap vanishes at zero start-up cost: start-up cost is a
+# source of integrality gap, not the only one. Fractional commitment also lets
+# a unit run below its own p_min, and over the reduced horizon that alone
+# leaves a 4.5% gap with every start cost set to zero.
+assert _gaps[0] == _gaps.min(), (
+    f"the smallest gap should be at zero start-up cost, got {_gaps.round(5).tolist()}"
 )
 assert (np.diff(_gaps) > 0).all(), (
     f"the gap should widen with start-up cost, got {_gaps.round(5).tolist()}"
 )
 print("Check passed: the relaxation is a valid lower bound at every start-up")
-print(f"cost, tight at zero, and widening monotonically to {_gaps[-1]:.2%}.")
+print(f"cost, smallest at zero ({_gaps[0]:.2%}), and widening monotonically")
+print(f"to {_gaps[-1]:.2%}.")
 
 # %% [markdown]
 # #### Interpretation
@@ -673,12 +679,25 @@ print(f"cost, tight at zero, and widening monotonically to {_gaps[-1]:.2%}.")
 # %% tags=["solution"]
 print("ANSWER.")
 print()
-print("The relaxation widens because start-up cost is the one term the fractional")
-print("solution can cheat on. Setting u = 0.4 buys 40% of a start-up for 40% of")
-print("the money, and no such thing exists. With zero start-up cost there is")
-print(f"nothing to cheat on and the gap is {gap_sweep['integrality gap'].iloc[0]:.2%};")
-print(f"at {startup_sweep[-1]:.0f} EUR it has grown to "
-      f"{gap_sweep['integrality gap'].iloc[-1]:.2%}.")
+print("The gap widens because start-up cost is a term the fractional solution can")
+print("cheat on. Setting u = 0.4 buys 40% of a start-up for 40% of the money, and")
+print("no such thing exists.")
+print()
+# The left-hand end of the sweep is mode-dependent, so read it rather than
+# assert it. Over the full horizon the relaxation is tight at zero start-up
+# cost; over the reduced one a fractional u still lets a unit sit below its
+# own p_min, and that alone leaves a few per cent.
+_zero_gap = gap_sweep["integrality gap"].iloc[0]
+_final_gap = gap_sweep["integrality gap"].iloc[-1]
+if _zero_gap < 1e-6:
+    print("With every start-up cost set to zero the relaxation is tight here:")
+    print(f"the gap is {_zero_gap:.2%}. There is nothing left to cheat on.")
+else:
+    print("Start-up cost is not the ONLY thing it can cheat on, which the")
+    print("left-hand end of the sweep shows: a fractional u also lets a unit run")
+    print(f"below its own p_min, leaving {_zero_gap:.2%} at zero start-up cost.")
+print(f"Adding start-up cost takes the gap to {_final_gap:.2%} at "
+      f"{startup_sweep[-1]:.0f} EUR.")
 print()
 print("What to do about it is the whole business of MILP formulation. The gap is")
 print("a property of the FORMULATION, not of the problem: two models of the same")

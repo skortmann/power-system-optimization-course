@@ -158,6 +158,19 @@ SIGMA = np.array([12.0, 6.0, 8.0])
 covariance = np.outer(SIGMA, SIGMA) * CORRELATION
 uncertainty = GaussianUncertainty(mean=np.zeros(3), covariance=covariance)
 
+# How each component of xi shifts the generation the system must supply.
+# xi = (wind forecast error, demand error at bus 1, demand error at bus 2), so
+# MORE wind than forecast REDUCES required generation while more demand raises
+# it. The wind entry is therefore -1, not +1.
+#
+# This sign is not cosmetic. With b = (1, 1, 1) the recourse supplies
+# net_demand + (xi_w + xi_d1 + xi_d2) while the system needs
+# net_demand - xi_w + xi_d1 + xi_d2, leaving a mismatch of exactly 2*xi_w in
+# every realisation -- so "sum(alpha) = 1 balances every realisation" was false
+# as written. It also inflates the margin: sqrt(b'.Sigma.b) is 20.474 MW with
+# (1,1,1) against 13.565 MW with the correct direction, a 51% over-reservation.
+BALANCE = np.array([-1.0, 1.0, 1.0])
+
 print("uncertainty: wind error, demand error at bus 1, demand error at bus 2")
 print(f"  std        : {uncertainty.std.round(2)}")
 print(f"  correlation:\n{np.round(uncertainty.correlation, 2)}")
@@ -168,8 +181,14 @@ print(f"  correlation:\n{np.round(uncertainty.correlation, 2)}")
 # When $\xi$ turns out non-zero, someone has to balance the system. The standard
 # model is **affine recourse** with participation factors:
 #
-# $$p_g(\xi) = p_g^0 + \alpha_g\,\mathbf{1}^\top\xi,
+# $$p_g(\xi) = p_g^0 + \alpha_g\,b^\top\xi,
 #   \qquad \sum_g \alpha_g = 1,\quad \alpha_g \ge 0$$
+#
+# where $b^\top\xi$ is the **extra generation the realisation demands**. With
+# $\xi = (\xi_{wind}, \xi_{d1}, \xi_{d2})$ that is $b = (-1, +1, +1)$: wind above
+# forecast reduces what the generators must supply, demand above forecast raises
+# it. Writing $\mathbf{1}^\top\xi$ here instead would leave a mismatch of
+# $2\xi_{wind}$ in every realisation.
 #
 # Each unit absorbs a fixed share of the total imbalance. The constraint
 # $\sum_g \alpha_g = 1$ is what makes the system balance in **every**
@@ -178,20 +197,31 @@ print(f"  correlation:\n{np.round(uncertainty.correlation, 2)}")
 # A generator's output is then random, so its capacity limit becomes a chance
 # constraint:
 #
-# $$\Pr\big[p_g^0 + \alpha_g\,\mathbf{1}^\top\xi \le \overline{P}_g\big] \ge 1-\epsilon_g$$
+# $$\Pr\big[p_g^0 + \alpha_g\,b^\top\xi \le \overline{P}_g\big] \ge 1-\epsilon_g$$
 #
 # which reformulates to
 #
 # $$p_g^0 + \alpha_g \cdot \Phi^{-1}(1-\epsilon_g)\,\sigma_{tot} \le \overline{P}_g,
-#   \qquad \sigma_{tot} = \sqrt{\mathbf{1}^\top\Sigma\mathbf{1}}.$$
+#   \qquad \sigma_{tot} = \sqrt{b^\top\Sigma\,b}.$$
 
 # %% tags=["provided"]
-sigma_total = uncertainty.spread(np.ones(3))
+sigma_total = uncertainty.spread(BALANCE)
 print(f"std of the TOTAL imbalance: {sigma_total:.3f} MW")
 print(f"sum of individual stds    : {uncertainty.std.sum():.3f} MW")
-print("\nThe total is smaller than the sum because the errors partly cancel —")
-print("but larger than sqrt(sum of squares) because they are positively")
-print(f"correlated (that would be {np.sqrt((uncertainty.std**2).sum()):.3f}).")
+print(f"independent equivalent      : {np.sqrt((uncertainty.std**2).sum()):.3f} MW")
+print("\nBoth comparisons matter, and they point in opposite directions.")
+print()
+print("Smaller than the SUM of the stds, because errors do not all peak at once.")
+print()
+print("Smaller than the INDEPENDENT equivalent too — and that is the interesting")
+print("one. Wind and demand errors are POSITIVELY correlated (rho = 0.35), but")
+print("they enter the balance with OPPOSITE signs: a windy hour tends to be a")
+print("high-demand hour, and the extra generation partly covers the extra load.")
+print("Correlation between terms of opposite sign REDUCES the net uncertainty.")
+print()
+print("Get the sign wrong and this reverses: with b = (1, 1, 1) the same")
+print("covariance gives 20.474 MW, and you would reserve 51% more capacity than")
+print("the physics requires, for a system that still would not balance.")
 
 
 def chance_constrained_dispatch(epsilons, *, deterministic=False):
@@ -263,7 +293,7 @@ N_VALIDATION = scaled(full=100_000, fast=20_000)
 def validate(model, n=N_VALIDATION, seed=12345):
     """Draw FRESH samples and count how often each limit is actually broken."""
     samples = sample_scenarios(uncertainty, n, seed=seed)
-    total_imbalance = samples.sum(axis=1)
+    total_imbalance = samples @ BALANCE
     p0 = np.array([pyo.value(model.p[g]) for g in model.G])
     alpha = np.array([pyo.value(model.alpha[g]) for g in model.G])
 
@@ -307,7 +337,11 @@ print(f"empirical individual : {cc_report.individual.round(4)}")
 print(f"empirical JOINT      : {cc_report.joint:.4f}")
 low, high = wilson_interval(cc_report.joint, cc_report.n_samples)
 print(f"  95% CI             : [{low:.4f}, {high:.4f}]")
-print(f"Boole's upper bound  : {boole_joint_bound(individual):.4f}")
+# Two constraints per generator carry risk -- an upper AND a lower limit --
+# so the union bound runs over 2N events, not N. Counting only N halves the
+# bound and turns a guarantee into something that is not one.
+print(f"Boole's upper bound  : {boole_joint_bound(np.repeat(individual, 2)):.4f}")
+print(f"  (over {2 * N_BUS} constraints: an upper and a lower limit per generator)")
 print()
 print(f"The joint violation is {cc_report.joint / max(cc_report.individual.max(), 1e-9):.1f}x")
 print("the worst individual one. Nobody asked for that, and it is what the")
@@ -401,7 +435,7 @@ for eps in epsilon_sweep:
         rows.append({"epsilon": eps, "cost": np.nan, "status": rec.termination})
         continue
     samples = sample_scenarios(uncertainty, N_VALIDATION, seed=9876)
-    total = samples.sum(axis=1)
+    total = samples @ BALANCE
     p0 = np.array([pyo.value(m.p[g]) for g in m.G])
     alpha = np.array([pyo.value(m.alpha[g]) for g in m.G])
     realised = p0[None, :] + np.outer(total, alpha)
@@ -518,7 +552,7 @@ def solve_and_validate(eps_vector, label, seed=555):
     m = chance_constrained_dispatch(eps_vector)
     rec = solve(m, "LP")
     samples = sample_scenarios(uncertainty, N_VALIDATION, seed=seed)
-    total = samples.sum(axis=1)
+    total = samples @ BALANCE
     p0 = np.array([pyo.value(m.p[g]) for g in m.G])
     alpha = np.array([pyo.value(m.alpha[g]) for g in m.G])
     realised = p0[None, :] + np.outer(total, alpha)
@@ -530,7 +564,9 @@ def solve_and_validate(eps_vector, label, seed=555):
         "worst individual": report.individual.max(),
         "JOINT measured": report.joint,
         "joint CI": f"[{lo:.4f}, {hi:.4f}]",
-        "Boole guarantee": boole_joint_bound(eps_vector),
+        # Over 2N constraints, matching n_constraints above and the
+        # "all 6 limits" statement in the interpretation.
+        "Boole guarantee": boole_joint_bound(np.repeat(eps_vector, 2)),
     }
 
 
@@ -653,7 +689,7 @@ def scenario_dispatch(scenarios):
     m.balance = pyo.Constraint(expr=sum(m.p[g] for g in m.G) == net_demand)
     m.participation = pyo.Constraint(expr=sum(m.alpha[g] for g in m.G) == 1.0)
 
-    totals = scenarios.sum(axis=1)
+    totals = scenarios @ BALANCE
 
     @m.Constraint(m.G, m.S)
     def upper_scenario(m, g, s):
@@ -669,7 +705,7 @@ def scenario_dispatch(scenarios):
 
 
 def measure(model, scenarios):
-    totals = scenarios.sum(axis=1)
+    totals = scenarios @ BALANCE
     p0 = np.array([pyo.value(model.p[g]) for g in model.G])
     alpha = np.array([pyo.value(model.alpha[g]) for g in model.G])
     realised = p0[None, :] + np.outer(totals, alpha)
@@ -679,9 +715,22 @@ def measure(model, scenarios):
 
 out_of_sample = sample_scenarios(uncertainty, N_VALIDATION, seed=24680)
 
+# NESTED samples: draw the largest set once and take prefixes, so that
+# S_20 subset S_50 subset S_200 subset S_1000. This is what makes the
+# monotonicity below a theorem rather than a coincidence -- more scenarios then
+# means strictly more constraints on the SAME realisations, so the feasible set
+# can only shrink and the cost can only rise.
+#
+# Drawing an independent sample per N (seed = 1000 + n) does not give nested
+# sets, and the cost is then free to fall when a larger sample happens to miss
+# an extreme draw that a smaller one contained. The validation cell below
+# asserted monotonicity regardless, and passed only because the particular
+# draws happened to cooperate.
+all_training = sample_scenarios(uncertainty, max(sample_sizes), seed=1000)
+
 rows = []
 for n in sample_sizes:
-    training = sample_scenarios(uncertainty, n, seed=1000 + n)
+    training = all_training[:n]
     m = scenario_dispatch(training)
     rec = solve(m, "LP")
     if not rec.ok:

@@ -244,8 +244,15 @@ z_soc = results["soc"]["record"].objective
 z_ac = results["exact"]["record"].objective
 soc_residual = max(results["soc"]["model"].soc_residuals().values())
 
+# Passed in the order the boxed inequality states, NOT as min/max. Sorting
+# them would silently repair a violation of the very ordering this section
+# claims to demonstrate: a misspecified relaxation landing above the feasible
+# point would be swapped into place and still print a tidy interval.
+# CertifiedInterval raises instead, and its guard tolerates the last-digit
+# crossing two independent solves produce (here z_SOC exceeds z_AC by ~7e-08,
+# which is solver noise, not a broken bound).
 interval = certified_interval(
-    min(z_soc, z_ac), max(z_soc, z_ac),
+    z_soc, z_ac,
     lower_source="SOC relaxation (convex, global)",
     upper_source="AC-feasible point (local NLP)",
 )

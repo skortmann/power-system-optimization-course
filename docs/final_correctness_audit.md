@@ -4,14 +4,23 @@ This document records an audit of the course's mathematics, implementations and
 results. It is written to be checked, not believed: every claim below names the
 script that produced it and the number it produced.
 
-The audit found and fixed **four substantive defects** in the course and **one
-low-severity consistency problem**, and it found **four defects in the audit
-instruments themselves**, which are recorded here because an audit that reports
-only the target's faults is not describing what happened.
+**The audit found real defects, including one Critical.** A commissioned
+independent reviewer found that several tutorials' *narratives contradict their
+own printed output*, and that the capstone's scenario study was inert — it
+re-solved one identical model twelve times while the text discussed the spread.
+Those are exactly the failures that survive a green test suite, and the audit's
+own harnesses did not catch them, because the harnesses test the library and the
+algorithms rather than whether each tutorial's prose matches its own numbers.
 
-Nothing in this document rests on "the notebooks all execute". They do — all
-twenty, from cleared sources, at full scale — and that fact is reported in
-§12 as one check among fifty-seven, not as a conclusion.
+Totals: **one Critical, seven High, and nine Medium defects found**; all
+Critical and High resolved. The audit also found **four defects in its own
+instruments**, three of which produced false failures against the course, and it
+**corrects one overclaim this document made in an earlier revision** (§10).
+
+Nothing here rests on "the notebooks all execute". They do — all twenty, from
+cleared sources, at full scale — and that fact is reported in §12 as one check
+among many, not as a conclusion. Two of the defects below were present in
+notebooks that executed cleanly and passed their own validation cells.
 
 ## Contents
 
@@ -46,10 +55,16 @@ measures is one edit.
 | `scripts/audit_decomposition.py` | 13 | Benders cut validity and tightness, Benders against full enumeration at two subproblem classes, column generation against an exhaustive column pool, reduced-cost signs |
 | `scripts/audit_exercises.py` | 9 | Pairing, scaffold leakage, validation-cell reachability, difficulty labels, deliverables |
 | `scripts/audit_bounds_t09.py` | 2 | Tutorial 09's `z_LP <= z_DW <= z_MILP` claim, measured on the tutorial's own model code |
+| `scripts/audit_reviewer_claims.py` | 3 | Re-tests the independent reviewer's findings before any of them is acted on |
 | one-off (§9) | 2 | The nonconvex AC Benders level against enumeration |
 
-Total: **57 evidence-backed checks**, alongside **56 pytest tests** and **20
+Total: **60 evidence-backed checks**, alongside **56 pytest tests** and **20
 executed notebooks**.
+
+A fifth input was not a harness: the independent reviewer read each tutorial's
+prose against its own printed output. That is where six of the seven High-or-
+above defects came from, and none of them was reachable by a harness — see the
+closing section.
 
 Three principles governed the work.
 
@@ -115,21 +130,37 @@ each is a place where a sign or factor error produces plausible-looking output:
 4. column-generation reduced-cost signs and column feasibility;
 5. PTDF and LMP sign conventions, by finite difference.
 
-**Status at the time of writing: the reviewer had not returned.** Its findings
-are therefore not incorporated below. Rather than hold the audit open, each of
-its five assigned areas was independently verified by this audit's own
-harnesses — areas 1 and 5 in §4 and §7, area 2 in §9, area 3 in §11, and area 4
-in §10 — so no area is reported here on the strength of a review that has not
-arrived. Should the reviewer return findings that contradict anything below,
-the resolution procedure is the one the brief sets out: derivation, numerical
-experiment, authoritative literature, benchmark result — in that order, with
-the reviewer's suggestions evaluated rather than applied.
+It returned findings on all five, plus tutorials 01, 02, 04, 06, 09 and 10 and
+the library.
 
-This is a real limitation of this audit and is recorded as such. It is not
-offset by the volume of independent checks; a second reader finds different
-things than a second script.
+### How its findings were treated
 
----
+Every finding was re-tested before anything was changed, in
+`scripts/audit_reviewer_claims.py` and in targeted experiments. A reviewer's
+finding is a hypothesis; several contradicted claims the course makes, and one
+contradicted a claim *this document* made.
+
+The outcome of that re-testing:
+
+| Reviewer finding | Re-test result |
+|---|---|
+| T10's PV scenarios never perturb the model | **Confirmed.** Objective spread across 12 scenarios `3.87e-13`; solved `psG` pinned at `max_p_mw` in every one |
+| T01 Ex 1.2's equal-marginal-cost conclusion is false | **Confirmed.** QP optimum `[60, 40]` — the LP vertex — marginal costs 34.6 vs 57.4 |
+| T02 Ex 2.2's "interior" case is at a ceiling | **Confirmed.** At D=70 the optimum is `[60, 10]`, identical duals to the "binding" case |
+| T02 Ex 2.3's gap does not widen | **Confirmed.** Absolute gap exactly invariant at 77.2785 across a 0→10,000 sweep |
+| T07's wind error has the wrong sign | **Confirmed.** Mismatch is exactly `2*xi_wind` in every realisation |
+| T07's Boole bound counts N, not 2N constraints | **Confirmed.** The allocation uses `2 * N_BUS`; the reported guarantee used `N_BUS` |
+| T09's integrality-property explanation is wrong | **Confirmed, and it corrects this document** — see §10 |
+| Three `relaxation_gap` call sites sort their arguments | **Confirmed** by inspection; all three fixed |
+| T08 prints an inverted bound chain via `abs()` | **Confirmed**; routed through `certified_interval` |
+| Every IPOPT solve reports `gap=inf%` | **Not reproduced.** `SolveRecord.gap` is `None`, not infinite, on a fresh NLP solve. Recorded as unconfirmed |
+
+One further defect was found *while* fixing another: T07's scenario sweep drew
+an **independent** sample per size (`seed=1000 + n`), so the scenario sets were
+not nested and the monotonicity the validation cell asserts did not follow from
+anything. It passed because the particular draws happened to cooperate; the
+corrected wind sign changed the draws and it failed immediately. Recorded as
+**R-10**.
 
 ## 3. Concepts, definitions and literature
 
@@ -493,10 +524,42 @@ z_MILP = 18510.00000000      integrality gap 195.238095 (1.055%)
 converged in 10 iterations, 29 columns
 ```
 
-The ordering holds and the two bounds coincide, so the attribution is verified
-rather than assumed. Two independent implementations — the tutorial's and the
-audit's own reconstruction in `audit_decomposition.py` — reach
-`18314.76190476`.
+The ordering holds and the two bounds coincide. Two independent
+implementations — the tutorial's and the audit's own reconstruction in
+`audit_decomposition.py` — reach `18314.76190476`.
+
+### Correction: this document previously overclaimed here
+
+An earlier revision of this report said the tutorial's *attribution* of that
+coincidence to Geoffrion's integrality property was "verified rather than
+assumed". That was wrong, and the independent reviewer caught it.
+
+What had been measured was that the two numbers agree. The attribution is a
+different claim: that they agree **because** minimising over the LP relaxation
+of each single-generator subproblem always lands on an integral point. That is
+a statement about every price vector, so it has to be tested over price
+vectors. Doing so (`scripts/audit_reviewer_claims.py`, 300 random price vectors
+per generator, each subproblem solved as an LP and as a MILP):
+
+| generator | worst (MILP − LP) |
+|---|---|
+| coal | 204.797463 |
+| gas | 218.450151 |
+| peak | 0.000000 |
+
+Two of the three subproblems have fractional extreme points **already**, with
+the minimum up-time constraints as written. The integrality property does not
+hold here and therefore cannot be the reason the bounds agree. The real reason
+is instance-specific: the compact LP's optimum happens to be representable as a
+convex combination of integral schedules, so tightening to `conv(X_g)` removes
+nothing the LP optimum was using.
+
+The tutorial's text and its takeaway have been corrected to say this, and to
+show the counterexample. Recorded as **R-07**.
+
+The general lesson is the one this correction illustrates: *an agreement
+between two numbers is not an explanation of itself*, and an audit that checks
+the numbers has not thereby checked the reason given for them.
 
 Tutorial 09's integer-recovery section deliberately retains two failed
 approaches before the working one (**D-10**): a λ-binary restriction that pins
@@ -655,6 +718,31 @@ validated name with a comment saying what it should hold.
 
 ## 14. Issues found, severity and resolution
 
+### Found by the independent reviewer, re-tested, and fixed
+
+These are the defects that a green test suite does not catch: a tutorial whose
+prose contradicts the numbers printed directly above it, and an experiment that
+runs cleanly while measuring nothing.
+
+| ID | Location | Issue | Severity | Verification | Resolution |
+|---|---|---|---|---|---|
+| **R-01** | `tutorials/_sources/10`, `perturbed_network` | The PV "scenarios" never perturbed the optimization. `add_OPF` bounds `psG` above by `max_p_mw`, which the perturbation never touched, so twelve scenarios solved one identical model while the text discussed the spread | **Critical** | Objective spread across 12 scenarios `3.87e-13`; solved `psG` pinned at `0.05` pu in every scenario regardless of `p_mw` | Perturbs `max_p_mw` — the binding quantity — alongside `p_mw`. Spread is now `7.79e-02`; scenarios run mean 0.2327, min 0.1889, max 0.2740 against a deterministic 0.2273, so "the deterministic solution is NOT the mean of the scenarios" is now true rather than printed over identical numbers |
+| **R-02** | `networks.two_generator_system` | T01 Ex 1.2's equal-incremental-cost conclusion was false for its own data: with `c2 = 0.08` the equal-marginal-cost point is at 163.6 MW, far outside the 60 MW ceiling, so the QP optimum was the **same vertex as the LP** | **High** | QP optimum `[60, 40]`, marginal costs 34.6 and 57.4, spread 22.80 EUR/MWh, while the text said "both units share the load so that their MARGINAL costs are equal" | `c2 = 0.40`, which puts the equal-MC point at 41.86 MW, strictly interior. Optimum is now `[41.86, 58.14]` with both marginal costs 58.488 EUR/MWh, spread `1.24e-11`. The validation cell now asserts the marginal-cost spread, which is the exercise's actual claim |
+| **R-03** | `tutorials/_sources/02`, KKT section | The "cheap unit interior" case used D=70, where the only feasible point is `[60, 10]` — the cheap unit exactly **at** its ceiling. The two contrasted cases had identical duals, and the interpretation printed "mu_max = [30. 0.] — all zero, because no upper limit is binding" | **High** | At D=70: `p* = [60, 10]`, `lambda = 55`, `mu_max = [30, 0]` — identical to the D=130 "binding" case | D=60, where `p* = [50, 10]`, `lambda = 25`, `mu_max = [0, 0]`. The contrast between an inactive and an active bound is now real |
+| **R-04** | `tutorials/_sources/02`, Ex 2.3 | The integrality gap did not widen with start-up cost. The sweep varied only the *cheap* unit's start cost, while the entire gap came from the *other* unit's fractional start-ups | **High** | Absolute gap exactly invariant at 77.2785 EUR across a 0 → 10,000 sweep; relative gap *shrinking*, and the notebook printed "the gap is 0.30%; at 2000 EUR it has grown to 0.28%" | Sweeps every unit's start cost. Gap is now 0.00% at zero start cost (so "nothing to cheat on" is literally true) rising monotonically to 3.53%. The validation cell now asserts tightness at zero and monotone widening |
+| **R-05** | `tutorials/_sources/07` | The wind forecast error entered the recourse with the **same sign** as the demand errors, so the system did not balance in any realisation — contradicting the notebook's explicit claim that `sum(alpha) = 1` balances every realisation | **High** | Mismatch is exactly `2*xi_wind` in every draw. The safety margin was also 51% too large: `sqrt(b'.Sigma.b)` is 20.474 MW with `(1,1,1)` against 13.565 MW with the correct `(-1,+1,+1)` | A single `BALANCE = (-1, +1, +1)` vector used at all seven sites, with the formulas in the markdown updated to `b` and the correlation discussion rewritten (with the correct sign the total is now *below* the independent equivalent, because positively-correlated terms of opposite sign partly cancel) |
+| **R-06** | `tutorials/_sources/07` | The reported Boole guarantee counted `N` constraints while the model imposes `2N` — an upper **and** a lower limit per generator — halving the stated bound | **High** | Internally inconsistent in the same notebook: the allocation uses `n_constraints = 2 * N_BUS` and the interpretation says "all 6 limits", while the reported guarantee used 3 entries | `boole_joint_bound(np.repeat(..., 2))` at both reporting sites, matching the allocation |
+| **R-07** | `tutorials/_sources/09` | The explanation for `z_LP == z_DW` invoked the integrality property, which two of the three subproblems measurably lack | **Medium** | 300 random price vectors per generator: worst MILP − LP is 204.80 (coal), 218.45 (gas), 0.00 (peak) | Text and takeaway rewritten to give the instance-specific reason and show the counterexample. **This also corrects an overclaim in this report** — see §10 |
+| **R-08** | `tutorials/_sources/05` (×2), `10` (×2) | Four `relaxation_gap` call sites sorted their arguments with `min`/`max`, defeating the function's own guard and relabelling the AC value as the SOC lower bound whenever solver noise crossed them | **Medium** | `relaxation_gap(100, 90)` raises; `relaxation_gap(min(100,90), max(100,90))` returns 0.1. On this instance the crossing fires every run | All four pass their arguments in the stated order. `relaxation_gap` now also clamps its result at zero, for the same reason `CertifiedInterval.width` does |
+| **R-09** | `tutorials/_sources/08` | The culminating certificate chain printed `LB_SOC = 0.22935436 <= z* <= UB_AC = 0.22935428` — an **empty** interval — with `abs()` hiding the sign in the width | **Medium** | Full-run output shows the inverted chain and a "width" of `7.4e-08` that is really a crossing | Routed through `certified_interval`, whose guard raises on a genuine violation and whose width is clamped. Now prints width `0.000e+00` |
+| **R-10** | `tutorials/_sources/07` | The scenario sweep drew an **independent** sample per size (`seed = 1000 + n`), so the sets were not nested and the monotonicity its validation cell asserts did not follow from anything | **High** | Found while fixing R-05: the previous numbers (3910.77 → 4020.99 → 4079.76 → 4396.78) were monotone by luck; the corrected wind sign changed the draws and the assertion failed immediately | Draws the largest sample once and takes prefixes, so `S_20 ⊂ S_50 ⊂ S_200 ⊂ S_1000` and monotonicity is a theorem. Costs now rise 3759 → 3761 → 3890 → 4074 and out-of-sample violation falls 0.0625 → 0.0274 → 0.0017 → 0.0001 |
+
+### Found by the independent reviewer, re-tested, and NOT confirmed
+
+| Reviewer finding | Re-test | Disposition |
+|---|---|---|
+| "Every IPOPT solve reports `gap=inf%`" | A fresh NLP solve returns `SolveRecord.gap = None`, not infinite | Not reproduced as stated. Recorded rather than acted on; a defensive `isfinite` guard would be harmless but was not applied on the strength of an unreproduced report |
+
 ### Found by this audit
 
 | ID | Location | Issue | Severity | Verification | Resolution |
@@ -700,11 +788,35 @@ Each was found by a check that failed, not by inspection.
 | **D-14** | CI | `coinor-libipopt-dev` ships the library, not the `ipopt` executable; the idaes binary then needed `liblapack3`/`libblas3`/`libgfortran5` | **Low** |
 | **D-15** | `tests/` | A test asserted `susceptance > 100 * susceptance_pu` when the ratio is exactly 100 | **Low** |
 
+### Open, recorded, not resolved
+
+The reviewer also reported the following, at Medium or below. They are recorded
+rather than fixed, and the course ships with them.
+
+| Location | Issue | Severity |
+|---|---|---|
+| `tutorials/_sources/06` | `dt` is hard-coded to 1.0 while `daily_profiles(n)` always spans 24 h and the objective carries no `dt`, so a 96-period run prices a 96-hour day. Knock-on: fast mode then changes the **physics** (a 12-hour day), which contradicts the guarantee stated in `config.py`, the README and `course_overview.md` §8 | **Medium** |
+| `tutorials/_sources/10` §7 | The scalability sweep labels a point "16 scenarios" while `N_SCENARIOS` caps it at 12, so the reported `S^0.92` is sub-linear partly because the last point does 25% less work than its label | **Medium** |
+| `tutorials/_sources/10` §5 | The chance-constrained voltage experiment is vacuous on this feeder: deterministic and chance-constrained give identical cost and zero violations, because the tightened floor sits ~10 sigma from the realised minimum | **Medium** |
+| `src/psopt_course/validation.py` | `constraint_residuals` reports `feasible` for an **unsolved** model: `pyo.value` raises on uninitialised variables and the exception is swallowed, leaving the worst violation at 0.0. It also never checks variable bounds | **Medium** |
+| `src/psopt_course/config.py` | `set_seed()` seeds `random` and the legacy `np.random` global state, neither of which anything in the repo uses — every draw goes through `default_rng(<explicit seed>)`. Reproducibility is real (§12) but not for the reason the docstring gives | **Medium** |
+| `docs/course_overview.md` | Asserts two T04 measurements T04 does not make — that multi-start finds *different* local optima (it finds one, every time) and that a converged local solution can be worse than a good LP (no such experiment exists). `instructor_guide.md` states the first correctly, so the two docs contradict each other | **Medium** |
+| `src/psopt_course/relaxations.py` | The branch-flow model silently ignores line charging susceptance (`BR_B`) and shunts. `case33bw` has neither, so nothing in the course is affected, but the model should refuse such a network the way it refuses transformers | **Medium** |
+| `src/psopt_course/relaxations.py` | With `allow_meshed=True` the `"exact"` variant is **itself a relaxation** of AC: the cycle angle-consistency condition is absent, so recovered angle differences need not close around a loop. The docstring implies otherwise | **Medium** |
+| `tutorials/_sources/07` | The "within budget" column compares one combined two-sided residual per generator against one epsilon, so a generator whose two limits each carry probability can exceed its budget and be reported correctly as out of budget for the wrong reason | **Medium** |
+| `tutorials/_sources/07` | In the deterministic case every margin is zero, so `alpha` appears in no constraint but `sum(alpha) = 1` and is fully degenerate. The headline "violates 49.6% of the time" is therefore a solver tie-break, not a property of the model | **Medium** |
+| `tutorials/_sources/03` | The markdown gives the PTDF as `B_d A (A' B_d A)^+` while the code uses the reference-deleted inverse. These are different matrices (the pseudo-inverse gives a distributed-slack PTDF); they agree on flows for balanced injections, which is why nothing downstream breaks | **Medium** |
+| `tutorials/_sources/05` §6 | The Slater diagnostic counts branches "strictly inside the cone" at a `1e-9` threshold, far below IPOPT's convergence tolerance, so 32/32 is an artefact of the barrier rather than a property of the model | **Medium** |
+
 ### Resolution status
 
-All **Critical** and **High** issues are resolved: **D-01**, **D-03**
-(Critical); **A-01**, **D-02**, **D-04**, **D-05** (High). All Medium issues are
-resolved. **D-10** is retained by design and labelled as such in the notebook.
+All **Critical** and **High** issues are resolved: **R-01** (Critical);
+**R-02**, **R-03**, **R-04**, **R-05**, **R-06**, **R-10**, **A-01**, **D-02**,
+**D-04**, **D-05** (High); **D-01**, **D-03** were Critical and were resolved
+during development. The Medium issues found by this audit's own harnesses
+(**A-02** to **A-05**) and the Medium reviewer findings **R-07** to **R-09**
+are resolved. The twelve Medium items in the table immediately above are
+**open**. **D-10** is retained by design and labelled as such in the notebook.
 
 ---
 
@@ -741,16 +853,28 @@ resolved. **D-10** is retained by design and labelled as such in the notebook.
 | Exercise/solution consistency | 9 structural checks over the tagged sources | 9/9 after **A-01** fixed | ✅ |
 | Pedagogical statements | Manual review of every strong claim | §5, §6, §9 | ✅ |
 | Literature | Bibliographic check of every dated citation | §3, all correct | ✅ |
-| Independent reviewer | Commissioned with a concrete assignment | **did not return; see §2** | ⚠️ |
+| Independent reviewer | Commissioned with a concrete assignment; every finding re-tested before acting | 10 findings confirmed and fixed, 1 not reproduced; see §2 | ✅ |
+| Narrative matches output | Reviewer read each tutorial's prose against its own printed numbers | 6 contradictions found (**R-01** to **R-06**); this audit's harnesses missed all of them | ✅ |
+| Scenario studies actually vary | Objective spread across scenarios | was `3.87e-13`, now `7.79e-02` (**R-01**) | ✅ |
 
 ---
 
 ## What this audit does not establish
 
-- **No second reader.** The commissioned reviewer did not return (§2). Its five
-  assigned areas were covered by this audit's own harnesses, but a second
-  script is not a second reader, and claiming otherwise would be the exact
-  failure this document is meant to prevent.
+- **Twelve Medium issues are open**, listed in §14. The course ships with them.
+  The most consequential is T06's `dt`, which makes fast mode change the
+  physics rather than only the scale — a guarantee the course states in three
+  places.
+- **Checking numbers is not checking narratives.** This audit's 57 harness
+  checks verified the library and the algorithms and found four defects. They
+  did not find any of **R-01** to **R-06**, because those are failures of prose
+  against output, and a harness that recomputes a quantity cannot notice that
+  the sentence above it says something else. Every one was found by a reader.
+  That is the clearest evidence here for why an independent review was worth
+  commissioning, and it is a limitation of the method, not a one-off.
+- **Tutorials 01, 04 and 06 and most of `docs/` received a single pass.** The
+  reviewer's parallel sub-agent covered them; its findings are recorded but
+  were not independently re-tested by this audit except where noted.
 - **Exactness is instance-specific.** The SOC relaxation is tight *on the
   feeders and objectives used here*. Tutorial 05's Exercise 5.2 exists to show
   it failing. Nothing in this audit generalises that tightness.

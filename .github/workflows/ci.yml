@@ -44,12 +44,19 @@ jobs:
       - run: uv sync --locked
 
       - name: Install IPOPT
-        # IPOPT is a system binary, not a wheel, and roughly half the course
-        # needs it. coinor-libipopt is the packaged build on Ubuntu.
+        # IPOPT is a system BINARY, not a wheel, and roughly half the course
+        # needs it. Ubuntu's coinor-libipopt-* packages ship the library but
+        # NOT the `ipopt` executable Pyomo shells out to, which is why an
+        # earlier apt-based attempt left every NLP job failing with
+        # "No executable found for solver 'ipopt'". idaes-pse distributes
+        # prebuilt binaries and is the reliable route.
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y coinor-libipopt-dev coinor-libipopt1v5 || true
-          which ipopt || echo "ipopt not on PATH; solver-dependent tests will skip"
+          uv pip install idaes-pse
+          uv run idaes get-extensions --verbose
+          echo "$HOME/.idaes/bin" >> "$GITHUB_PATH"
+
+      - name: Confirm IPOPT is on PATH
+        run: ipopt --version
 
       - name: Report what this runner can actually solve
         run: uv run python scripts/check_solvers.py
@@ -78,8 +85,9 @@ jobs:
 
       - name: Install IPOPT
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y coinor-libipopt-dev coinor-libipopt1v5 || true
+          uv pip install idaes-pse
+          uv run idaes get-extensions --verbose
+          echo "$HOME/.idaes/bin" >> "$GITHUB_PATH"
 
       - name: Build and execute the solution notebooks
         run: |

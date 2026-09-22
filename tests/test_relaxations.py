@@ -17,8 +17,16 @@ import pyomo.environ as pyo
 import pytest
 
 from psopt_course.relaxations import BFM, SOCBFM
+from psopt_course.solvers import available_solvers
 
 warnings.filterwarnings("ignore")
+
+# Every test here needs a nonlinear solve. Skipping is honest on a machine
+# without IPOPT; failing would say the FORMULATION is broken when it is not.
+pytestmark = pytest.mark.skipif(
+    not available_solvers().get("ipopt", False),
+    reason="IPOPT is not installed; see docs/solver_guide.md",
+)
 
 VMIN, VMAX = 0.90, 1.05
 

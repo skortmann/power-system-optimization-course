@@ -128,9 +128,10 @@ class BFM(Basemodel):
         *,
         allow_meshed: bool = False,
     ) -> None:
-        if current_definition not in ("exact", "soc"):
+        if current_definition not in ("exact", "soc", "linear"):
             raise ValueError(
-                f"current_definition must be 'exact' or 'soc', got {current_definition!r}"
+                f"current_definition must be 'exact', 'soc' or 'linear', "
+                f"got {current_definition!r}"
             )
         self.current_definition: CurrentDefinition = current_definition
         self._allow_meshed = allow_meshed
@@ -314,6 +315,16 @@ class BFM(Basemodel):
         the objective values comparable, and the difference attributable to the
         relaxation rather than to a modelling discrepancy.
         """
+        if self.current_definition == "linear":
+            # LinDistFlow: no current variable at all. Fixing ell = 0 makes the
+            # loss terms vanish from KVL and from the loss equations, leaving a
+            # pure LP. This is an APPROXIMATION, not a relaxation -- it changes
+            # the equations rather than enlarging the feasible set, so its
+            # optimum bounds nothing.
+            for l in self.model.L:
+                self.model.ell[l].fix(0.0)
+            return
+
         if self.current_definition == "exact":
 
             @self.model.Constraint(self.model.L)
@@ -356,7 +367,11 @@ class SOCBFM(BFM, OPF):
     @property
     def problem_class(self) -> str:
         """The class a solver actually sees. Name it before choosing a solver."""
-        return "SOCP" if self.current_definition == "soc" else "nonconvex QCQP"
+        return {
+            "soc": "SOCP",
+            "exact": "nonconvex QCQP",
+            "linear": "LP",
+        }[self.current_definition]
 
     def add_OPF(
         self,
@@ -395,15 +410,29 @@ class SOCBFM(BFM, OPF):
                 return pyo.Constraint.Skip
             return model.u[b] <= model.u_max
 
-        # Thermal limit, also in lifted form: S^2 <= Smax^2 is a convex
-        # quadratic constraint and needs no cone of its own.
-        @self.model.Constraint(self.model.L)
-        def thermal_limit_from(model, l):
-            return model.pLfrom[l] ** 2 + model.qLfrom[l] ** 2 <= model.SLmax[l] ** 2
+        # Thermal limit. S^2 <= Smax^2 is a convex quadratic constraint and
+        # needs no cone of its own -- but it would make the LinDistFlow level a
+        # QCQP rather than an LP, so there it becomes a box on P and Q instead.
+        # That box is a weaker constraint, and the LP level says so.
+        if self.current_definition == "linear":
 
-        @self.model.Constraint(self.model.L)
-        def thermal_limit_to(model, l):
-            return model.pLto[l] ** 2 + model.qLto[l] ** 2 <= model.SLmax[l] ** 2
+            @self.model.Constraint(self.model.L)
+            def thermal_limit_from(model, l):
+                return (-model.SLmax[l], model.pLfrom[l], model.SLmax[l])
+
+            @self.model.Constraint(self.model.L)
+            def thermal_limit_to(model, l):
+                return (-model.SLmax[l], model.pLto[l], model.SLmax[l])
+
+        else:
+
+            @self.model.Constraint(self.model.L)
+            def thermal_limit_from(model, l):
+                return model.pLfrom[l] ** 2 + model.qLfrom[l] ** 2 <= model.SLmax[l] ** 2
+
+            @self.model.Constraint(self.model.L)
+            def thermal_limit_to(model, l):
+                return model.pLto[l] ** 2 + model.qLto[l] ** 2 <= model.SLmax[l] ** 2
 
     # -- diagnostics -----------------------------------------------------
 

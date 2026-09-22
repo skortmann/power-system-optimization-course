@@ -66,7 +66,14 @@ def relaxation_gap(relaxed: float, feasible: float) -> float:
             f"relaxed={relaxed:.6g} > feasible={feasible:.6g}. Either the two models "
             f"differ by more than the intended relaxation, or one of them is wrong."
         )
-    return _relative(feasible - relaxed, feasible)
+    # Clamped at zero, for the same reason CertifiedInterval.width is: two
+    # independent solves of a tight relaxation disagree in the last few digits,
+    # so `relaxed` can land a hair above `feasible`. That crossing means the
+    # bound is ATTAINED, not that it is negative. Reporting -6.6e-08 as a
+    # "relaxation gap" invites a reader to treat the sign as information, and
+    # invites a caller to sort the arguments to make it go away -- which
+    # defeats the guard above. The guard still raises on a real violation.
+    return max(0.0, _relative(feasible - relaxed, feasible))
 
 
 def integrality_gap(integer_optimum: float, lp_relaxation: float) -> float:

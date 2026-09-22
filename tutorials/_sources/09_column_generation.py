@@ -381,15 +381,39 @@ print(f"\ncolumns generated: {sum(len(v) for v in columns.values())} "
 #
 # $$z_{LP} \;\le\; z_{DW} \;\le\; z_{MILP}.$$
 #
-# It is *strictly* stronger only when the subproblem polytope has fractional
-# extreme points. When $\mathrm{conv}(X_g)$ is exactly what the compact
-# formulation's LP relaxation describes — the **integrality property** — the two
-# coincide, and that is what happened here.
+# It is *strictly* stronger only when $\mathrm{conv}(X_g)$ is tighter than the
+# LP relaxation of $X_g$ **in the direction the master cares about**. Here the
+# two bounds coincide — and it is worth being careful about why, because the
+# textbook explanation does not apply to this instance.
 #
-# This is not a disappointment; it is a diagnostic. It says the per-generator
-# constraints of this instance are already tightly described. Add ramping,
-# minimum down-times or start-up cost tiers and the subproblem stops having the
-# integrality property, and the DW bound pulls away from the LP one.
+# The **integrality property** (Geoffrion, 1974) says that if minimising over
+# the LP relaxation of $X_g$ always lands on an integral point, for *every*
+# price vector, then the Dantzig-Wolfe bound can never beat the LP bound. That
+# is a *sufficient* condition, and it is tempting to read the equality above as
+# evidence for it.
+#
+# It is not, and the audit measured this rather than assuming it. Minimising
+# each single-generator subproblem over 300 random price vectors, as an LP and
+# then as a MILP, the worst gaps are:
+#
+# | generator | worst (MILP $-$ LP) |
+# |---|---|
+# | coal | 204.80 |
+# | gas | 218.45 |
+# | peak | 0.00 |
+#
+# Two of the three subproblems have **fractional extreme points already**, with
+# the minimum up-time constraints as written. So the integrality property does
+# *not* hold here, and cannot be the reason the bounds agree.
+#
+# The real reason is instance-specific: the compact LP's optimum happens to be
+# representable as a convex combination of integral schedules, so tightening to
+# $\mathrm{conv}(X_g)$ removes nothing the LP optimum was using. A different
+# demand profile on the same generators can separate the two bounds without any
+# change to the formulation.
+#
+# The lesson is the one this course keeps returning to: an equality between two
+# numbers is not an explanation of itself.
 
 # %% [markdown]
 # ## 6. Getting an integer answer
@@ -794,8 +818,10 @@ print("course.")
 #    everywhere means the LP is solved without enumeration.
 # 4. **Artificial variables are how the method starts.** An infeasible master has
 #    no duals, so there is nothing to price with.
-# 5. **Dantzig-Wolfe is at least as strong as the LP relaxation**, and equal to
-#    it when the subproblem has the integrality property — which it did here.
+# 5. **Dantzig-Wolfe is at least as strong as the LP relaxation.** Here the two
+#    were equal — but *not* because of the integrality property, which two of
+#    the three subproblems measurably fail. Equality was a property of this
+#    instance, not of the formulation.
 # 6. **Column generation solves an LP.** The integer answer needs
 #    branch-and-price; a restricted MILP is a heuristic, and here it was 3.5%
 #    off.

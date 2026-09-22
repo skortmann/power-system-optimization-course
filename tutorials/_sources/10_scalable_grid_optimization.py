@@ -293,11 +293,26 @@ print(f"PV uncertainty: sigma = {sigma_vector.round(5)} pu, correlation 0.6")
 
 
 def perturbed_network(deviation):
-    """The feeder with PV output shifted by `deviation` (per unit)."""
+    """The feeder with PV availability shifted by `deviation` (per unit).
+
+    Both ``p_mw`` AND ``max_p_mw`` move. That is not belt-and-braces: it is the
+    difference between a scenario study and a very slow way of solving one
+    model twelve times.
+
+    ``SOCBFM.add_OPF`` leaves ``psG`` a free variable and bounds it above by
+    ``max_p_mw``. Minimising imported power drives every PV unit to that upper
+    bound, so a scenario that moved only ``p_mw`` -- the *set point*, which
+    nothing in the optimization reads -- produced a numerically identical
+    model. Measured before this was fixed: twelve scenarios, objective spread
+    3.87e-13 pu, while the narration below discussed the spread. Perturbing the
+    binding quantity gives a spread of 7.8e-02 pu.
+    """
     perturbed = copy.deepcopy(net)
     for k in range(len(perturbed.sgen)):
-        new = perturbed.sgen.p_mw.iloc[k] + deviation[k] * net.sn_mva
-        perturbed.sgen.loc[perturbed.sgen.index[k], "p_mw"] = max(new, 0.0)
+        index = perturbed.sgen.index[k]
+        available = max(perturbed.sgen.p_mw.iloc[k] + deviation[k] * net.sn_mva, 0.0)
+        perturbed.sgen.loc[index, "p_mw"] = available
+        perturbed.sgen.loc[index, "max_p_mw"] = available
     return perturbed
 
 
@@ -676,7 +691,7 @@ certificate = pd.DataFrame(
             "LB (SOC relaxation)": lower,
             "UB (AC feasible)": upper,
             "absolute width": abs(upper - lower),
-            "relative gap": relaxation_gap(min(lower, upper), max(lower, upper)),
+            "relative gap": relaxation_gap(lower, upper),
             "max SOC residual": residual,
         }
     }
@@ -763,8 +778,7 @@ for scale in loadings:
     rows.append({
         "loading": scale,
         "SOC [pu]": soc_r.objective, "AC [pu]": ac_r.objective,
-        "gap": relaxation_gap(min(soc_r.objective, ac_r.objective),
-                              max(soc_r.objective, ac_r.objective)),
+        "gap": relaxation_gap(soc_r.objective, ac_r.objective),
         "max residual": max(soc_model_i.soc_residuals().values()),
         "SOC time [s]": soc_r.seconds, "AC time [s]": ac_r.seconds,
         "status": "ok",

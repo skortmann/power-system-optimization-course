@@ -401,7 +401,9 @@ def soc_slack(P, Q, u, ell):
     pass
 
 
-my_residuals = None
+# The validation cell below checks both of these, so build them:
+my_residuals = None     # {branch: slack} for the RELAXED model, from soc_slack
+exact_residuals = None  # the same for the EXACT model, where it must be ~0
 
 # %% tags=["solution"]
 def soc_slack(P, Q, u, ell):
@@ -510,7 +512,10 @@ print("builds a case where the relaxation is visibly NOT tight.")
 
 # %% tags=["exercise"]
 # TODO: solve the relaxation with a constant objective and measure exactness.
-broken = None
+# The validation cell below checks all three names, so build them:
+broken = None            # the SOCBFM built with a constant objective
+broken_record = None     # the SolveRecord from solving it
+broken_residuals = None  # broken.soc_residuals()
 
 # %% tags=["solution"]
 broken = SOCBFM(copy.deepcopy(net), current_definition="soc")

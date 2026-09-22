@@ -184,8 +184,17 @@ def two_generator_system(demand: float = 100.0, quadratic: bool = False) -> Disp
     :math:`c_2 p^2` term, which turns the LP into a QP — the first time in the
     course that the problem class changes without the physics changing.
     """
+    # c2 = 0.40, not 0.08. The point of the quadratic variant is that a
+    # strictly convex cost moves the optimum OFF the vertex and equalises
+    # marginal costs. With c2 = 0.08 the equal-marginal-cost point sits at
+    # p1 = 163.6 MW, far outside this unit's 60 MW ceiling, so the QP optimum
+    # was [60, 40] -- the same vertex as the LP -- with marginal costs 34.6 and
+    # 57.4, a 22.8 EUR/MWh spread. The equal-marginal-cost reading needs the
+    # optimum to be interior, which needs 2*c2 + 2*0.03 > 0.6, i.e. c2 > 0.27.
+    # At c2 = 0.40 the optimum is p = [41.86, 58.14] with both marginal costs
+    # 58.49 EUR/MWh.
     cheap = Generator("G1_coal", bus=0, p_min=20.0, p_max=60.0, c1=25.0,
-                      c2=0.08 if quadratic else 0.0, start_cost=500.0,
+                      c2=0.40 if quadratic else 0.0, start_cost=500.0,
                       min_up=3, min_down=2, ramp=30.0)
     expensive = Generator("G2_gas", bus=0, p_min=10.0, p_max=80.0, c1=55.0,
                           c2=0.03 if quadratic else 0.0, start_cost=150.0,

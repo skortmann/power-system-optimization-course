@@ -511,7 +511,13 @@ def check_kkt(model) -> dict:
 
 
 kkt_results = {}
-for label, demand in [("cheap unit interior", 70.0), ("cheap unit at ceiling", 130.0)]:
+# D = 60, not 70. At D = 70 the only feasible point is p = [60, 10] -- the
+# cheap unit sits exactly ON its 60 MW ceiling, so mu_max = [30, 0] and the
+# two cases have IDENTICAL duals. The interpretation below then printed
+# "mu_max = [30. 0.] - all zero", contradicting the numbers three lines
+# above it. At D = 60 the optimum is p = [50, 10], strictly inside, and the
+# contrast between an inactive and an active bound is real.
+for label, demand in [("cheap unit interior", 60.0), ("cheap unit at ceiling", 130.0)]:
     m = build_primal(demand)
     solve(m, "LP", duals=True)
     kkt_results[label] = check_kkt(m)
@@ -596,9 +602,17 @@ import dataclasses
 startup_sweep = [0.0, 250.0, 500.0, 1000.0, 2000.0]
 original = list(generators)
 
+# Sweep EVERY unit's start-up cost, not just the first one.
+#
+# Sweeping generators[0] alone leaves the gap exactly invariant -- 77.2785 EUR
+# at every value from 0 to 10,000 -- because the whole gap comes from the OTHER
+# unit's fractional start-ups: (2.0 - 1.4848) starts x 150 EUR = 77.2785 EUR.
+# The relative gap then SHRINKS as the denominator grows, and the interpretation
+# below used to print "the gap is 0.30%; at 2000 EUR it has grown to 0.28%".
 rows = []
 for start_cost in startup_sweep:
-    generators[0] = dataclasses.replace(original[0], start_cost=start_cost)
+    for i in range(len(generators)):
+        generators[i] = dataclasses.replace(original[i], start_cost=start_cost)
     milp_i = unit_commitment(profile)
     lp_i = unit_commitment(profile, relax=True)
     z_milp = solve(milp_i, "MILP").objective
@@ -607,7 +621,8 @@ for start_cost in startup_sweep:
         "start cost": start_cost, "MILP": z_milp, "LP relaxation": z_lp,
         "integrality gap": integrality_gap(z_milp, z_lp),
     })
-generators[0] = original[0]   # put it back
+for i in range(len(generators)):
+    generators[i] = original[i]   # put them back
 
 gap_sweep = pd.DataFrame(rows).set_index("start cost")
 display(gap_sweep.round(4))
@@ -637,7 +652,18 @@ assert (gap_sweep["LP relaxation"] <= gap_sweep["MILP"] + 1e-6).all(), (
     "the LP relaxation must never exceed the MILP optimum — it is a LOWER bound"
 )
 assert (gap_sweep["integrality gap"] >= -1e-9).all()
-print("Check passed: the relaxation is a valid lower bound at every start-up cost.")
+# Check the claim the exercise actually makes. Validity alone held even when
+# the swept parameter did not drive the gap at all and the "widening" gap was
+# in fact shrinking from 0.30% to 0.28%.
+_gaps = gap_sweep["integrality gap"].to_numpy()
+assert _gaps[0] < 1e-6, (
+    f"with no start-up cost the relaxation should be tight, got {_gaps[0]:.4%}"
+)
+assert (np.diff(_gaps) > 0).all(), (
+    f"the gap should widen with start-up cost, got {_gaps.round(5).tolist()}"
+)
+print("Check passed: the relaxation is a valid lower bound at every start-up")
+print(f"cost, tight at zero, and widening monotonically to {_gaps[-1]:.2%}.")
 
 # %% [markdown]
 # #### Interpretation

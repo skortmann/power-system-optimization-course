@@ -114,6 +114,14 @@ ignore = [
     "RUF059", "RUF046",
 ]
 
+# The audit scripts put their tunable constants in a labelled block at the top
+# of the file, ahead of the imports, so that changing what they measure means
+# editing one visible block rather than hunting through the body. That layout
+# necessarily places module-level imports below the first statement.
+"scripts/audit*.py" = ["E402"]
+"scripts/build_exercise_notebooks.py" = ["E402"]
+"scripts/check_*.py" = ["E402"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]

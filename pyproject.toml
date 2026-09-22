@@ -1,0 +1,116 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "psopt-course"
+version = "0.1.0"
+description = "From Economic Dispatch to Large-Scale Grid Optimization — hands-on mathematical optimization for power systems"
+readme = "README.md"
+# Upper bound is inherited, not chosen: opf-potpourri 0.7.0 declares
+# >=3.10,<3.13, so 3.12 is the newest interpreter the whole stack resolves on.
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Steffen Kortmann", email = "steffen.kortmann@fit.fraunhofer.de" }]
+keywords = [
+    "power systems",
+    "optimization",
+    "optimal power flow",
+    "pyomo",
+    "convex relaxation",
+    "benders decomposition",
+    "column generation",
+]
+
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.0,<3",
+    "matplotlib>=3.8",
+    "scipy>=1.11",
+    "networkx>=3.2",
+    "pyomo>=6.10",
+    # HiGHS ships as a wheel and Pyomo drives it through appsi_highs, so the
+    # LP/QP/MILP half of the course needs no system solver install at all.
+    "highspy>=1.7",
+    # The conic half does. Clarabel is a pure-Rust interior-point conic solver
+    # with a wheel for every platform we target; CVXPY is the modelling layer
+    # that gives reliable access to its *dual* variables, which Tutorial 08
+    # needs to build conic Benders cuts. See docs/solver_guide.md.
+    "cvxpy>=1.5",
+    "clarabel>=0.9",
+    "pandapower>=2.13,<3.6",
+    "simbench>=1.4",
+    # Installed from the PUBLIC GitHub mirror at a pinned tag, so an external
+    # student gets byte-identical code without access to the IAEW GitLab where
+    # development happens. The v0.7.0 tag and the PyPI release of the same
+    # number carry identical package contents; the tag is used because it is
+    # the citable public source.
+    "opf-potpourri @ git+https://github.com/RWTH-IAEW/opf-potpourri@v0.7.0",
+    # Gurobi is available to the students this course is written for and is the
+    # better tool for convex QP, SOCP and especially MISOCP (Tutorial 08 needs a
+    # conic subproblem under an integer master). It pip-installs WITHOUT a
+    # licence, in a size-limited mode that covers every fast-mode model here.
+    # It is never required: psopt_course.solvers falls back to the open-source
+    # route whenever Gurobi is absent or the model exceeds the free limits.
+    "gurobipy>=12.0",
+    "jupyterlab>=4.0",
+    "ipykernel>=6.29",
+    "ipywidgets>=8.1",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+# Never required. Every notebook has an open-source path.
+gurobi = ["gurobipy>=12.0"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "nbclient>=0.10",
+    "nbformat>=5.10",
+    "jupytext>=1.16",
+]
+
+[project.urls]
+Repository = "https://github.com/skortmann/power-system-optimization-course"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# The notebooks under tutorials/ are GENERATED from tutorials/_sources/*.py by
+# scripts/build_exercise_notebooks.py. Linting an artifact reports the same
+# finding twice and tempts someone to edit the copy that gets overwritten.
+extend-exclude = ["tutorials/*.ipynb"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+    # Notebook-facing code reads better with a few long formula lines than with
+    # the formula broken across continuations.
+    "E741",
+    # SIM300 calls `P**2 + Q**2 <= u * ell` a "Yoda condition" and wants the
+    # sides swapped. That is exactly backwards for this course: the whole point
+    # is that the code mirrors the printed equation, and the SOC relaxation is
+    # written `P^2 + Q^2 <= u * l` in Jabr, Farivar and Low, and everywhere else.
+    "SIM300",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Jupytext sources are notebooks: top-level imports appear after prose cells,
+# names come from earlier cells, and formula lines are deliberately long.
+# A tagged source holds BOTH variants of every exercise — the student stub and
+# the worked solution — so a redefinition (F811) is the design, not a mistake.
+# The rest are ordinary notebook facts: imports after prose, names from earlier
+# cells, long formula lines.
+"tutorials/_sources/*.py" = [
+    "F821", "E501", "E402", "B007", "SIM", "F811", "F401", "RUF001", "RUF003",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]

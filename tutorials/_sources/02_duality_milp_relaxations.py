@@ -511,7 +511,13 @@ def check_kkt(model) -> dict:
 
 
 kkt_results = {}
-for label, demand in [("cheap unit interior", 70.0), ("cheap unit at ceiling", 130.0)]:
+# D = 60, not 70. At D = 70 the only feasible point is p = [60, 10] -- the
+# cheap unit sits exactly ON its 60 MW ceiling, so mu_max = [30, 0] and the
+# two cases have IDENTICAL duals. The interpretation below then printed
+# "mu_max = [30. 0.] - all zero", contradicting the numbers three lines
+# above it. At D = 60 the optimum is p = [50, 10], strictly inside, and the
+# contrast between an inactive and an active bound is real.
+for label, demand in [("cheap unit interior", 60.0), ("cheap unit at ceiling", 130.0)]:
     m = build_primal(demand)
     solve(m, "LP", duals=True)
     kkt_results[label] = check_kkt(m)
@@ -596,9 +602,17 @@ import dataclasses
 startup_sweep = [0.0, 250.0, 500.0, 1000.0, 2000.0]
 original = list(generators)
 
+# Sweep EVERY unit's start-up cost, not just the first one.
+#
+# Sweeping generators[0] alone leaves the gap exactly invariant -- 77.2785 EUR
+# at every value from 0 to 10,000 -- because the whole gap comes from the OTHER
+# unit's fractional start-ups: (2.0 - 1.4848) starts x 150 EUR = 77.2785 EUR.
+# The relative gap then SHRINKS as the denominator grows, and the interpretation
+# below used to print "the gap is 0.30%; at 2000 EUR it has grown to 0.28%".
 rows = []
 for start_cost in startup_sweep:
-    generators[0] = dataclasses.replace(original[0], start_cost=start_cost)
+    for i in range(len(generators)):
+        generators[i] = dataclasses.replace(original[i], start_cost=start_cost)
     milp_i = unit_commitment(profile)
     lp_i = unit_commitment(profile, relax=True)
     z_milp = solve(milp_i, "MILP").objective
@@ -607,7 +621,8 @@ for start_cost in startup_sweep:
         "start cost": start_cost, "MILP": z_milp, "LP relaxation": z_lp,
         "integrality gap": integrality_gap(z_milp, z_lp),
     })
-generators[0] = original[0]   # put it back
+for i in range(len(generators)):
+    generators[i] = original[i]   # put them back
 
 gap_sweep = pd.DataFrame(rows).set_index("start cost")
 display(gap_sweep.round(4))
@@ -637,7 +652,24 @@ assert (gap_sweep["LP relaxation"] <= gap_sweep["MILP"] + 1e-6).all(), (
     "the LP relaxation must never exceed the MILP optimum — it is a LOWER bound"
 )
 assert (gap_sweep["integrality gap"] >= -1e-9).all()
-print("Check passed: the relaxation is a valid lower bound at every start-up cost.")
+# Check the claim the exercise actually makes. Validity alone held even when
+# the swept parameter did not drive the gap at all and the "widening" gap was
+# in fact shrinking from 0.30% to 0.28%.
+_gaps = gap_sweep["integrality gap"].to_numpy()
+# The claim is that start-up cost WIDENS the gap, so test the widening. Do not
+# also assert that the gap vanishes at zero start-up cost: start-up cost is a
+# source of integrality gap, not the only one. Fractional commitment also lets
+# a unit run below its own p_min, and over the reduced horizon that alone
+# leaves a 4.5% gap with every start cost set to zero.
+assert _gaps[0] == _gaps.min(), (
+    f"the smallest gap should be at zero start-up cost, got {_gaps.round(5).tolist()}"
+)
+assert (np.diff(_gaps) > 0).all(), (
+    f"the gap should widen with start-up cost, got {_gaps.round(5).tolist()}"
+)
+print("Check passed: the relaxation is a valid lower bound at every start-up")
+print(f"cost, smallest at zero ({_gaps[0]:.2%}), and widening monotonically")
+print(f"to {_gaps[-1]:.2%}.")
 
 # %% [markdown]
 # #### Interpretation
@@ -647,12 +679,25 @@ print("Check passed: the relaxation is a valid lower bound at every start-up cos
 # %% tags=["solution"]
 print("ANSWER.")
 print()
-print("The relaxation widens because start-up cost is the one term the fractional")
-print("solution can cheat on. Setting u = 0.4 buys 40% of a start-up for 40% of")
-print("the money, and no such thing exists. With zero start-up cost there is")
-print(f"nothing to cheat on and the gap is {gap_sweep['integrality gap'].iloc[0]:.2%};")
-print(f"at {startup_sweep[-1]:.0f} EUR it has grown to "
-      f"{gap_sweep['integrality gap'].iloc[-1]:.2%}.")
+print("The gap widens because start-up cost is a term the fractional solution can")
+print("cheat on. Setting u = 0.4 buys 40% of a start-up for 40% of the money, and")
+print("no such thing exists.")
+print()
+# The left-hand end of the sweep is mode-dependent, so read it rather than
+# assert it. Over the full horizon the relaxation is tight at zero start-up
+# cost; over the reduced one a fractional u still lets a unit sit below its
+# own p_min, and that alone leaves a few per cent.
+_zero_gap = gap_sweep["integrality gap"].iloc[0]
+_final_gap = gap_sweep["integrality gap"].iloc[-1]
+if _zero_gap < 1e-6:
+    print("With every start-up cost set to zero the relaxation is tight here:")
+    print(f"the gap is {_zero_gap:.2%}. There is nothing left to cheat on.")
+else:
+    print("Start-up cost is not the ONLY thing it can cheat on, which the")
+    print("left-hand end of the sweep shows: a fractional u also lets a unit run")
+    print(f"below its own p_min, leaving {_zero_gap:.2%} at zero start-up cost.")
+print(f"Adding start-up cost takes the gap to {_final_gap:.2%} at "
+      f"{startup_sweep[-1]:.0f} EUR.")
 print()
 print("What to do about it is the whole business of MILP formulation. The gap is")
 print("a property of the FORMULATION, not of the problem: two models of the same")

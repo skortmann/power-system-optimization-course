@@ -26,6 +26,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from psopt_course import tolerances as tol
+
 __all__ = [
     "CertifiedInterval",
     "Scoreboard",
@@ -58,13 +60,20 @@ def relaxation_gap(relaxed: float, feasible: float) -> float:
     flow model, ``SOCBFM.soc_residuals()`` is the test that speaks to
     exactness; this number does not.
     """
-    if relaxed > feasible + 1e-6:
+    if not tol.bound_holds(relaxed, feasible):
         raise ValueError(
             f"a relaxation cannot exceed a feasible objective for a minimization: "
             f"relaxed={relaxed:.6g} > feasible={feasible:.6g}. Either the two models "
             f"differ by more than the intended relaxation, or one of them is wrong."
         )
-    return _relative(feasible - relaxed, feasible)
+    # Clamped at zero, for the same reason CertifiedInterval.width is: two
+    # independent solves of a tight relaxation disagree in the last few digits,
+    # so `relaxed` can land a hair above `feasible`. That crossing means the
+    # bound is ATTAINED, not that it is negative. Reporting -6.6e-08 as a
+    # "relaxation gap" invites a reader to treat the sign as information, and
+    # invites a caller to sort the arguments to make it go away -- which
+    # defeats the guard above. The guard still raises on a real violation.
+    return max(0.0, _relative(feasible - relaxed, feasible))
 
 
 def integrality_gap(integer_optimum: float, lp_relaxation: float) -> float:
@@ -96,7 +105,7 @@ class CertifiedInterval:
     upper_source: str = "feasible solution"
 
     def __post_init__(self) -> None:
-        if self.lower > self.upper + 1e-6:
+        if not tol.bound_holds(self.lower, self.upper):
             raise ValueError(
                 f"lower bound {self.lower:.6g} exceeds upper bound {self.upper:.6g}; "
                 f"the interval is empty, so one of the two models is misspecified"
@@ -104,7 +113,17 @@ class CertifiedInterval:
 
     @property
     def width(self) -> float:
-        return self.upper - self.lower
+        """Never negative.
+
+        Two solvers reporting the same optimum disagree in the last few digits,
+        so the lower bound can land a little ABOVE the upper one -- Tutorial
+        05's SOC and exact branch-flow objectives differ by -7.6e-08 that way.
+        That crossing is solver noise, not information: it means the two bounds
+        coincide. Returning it unclamped would print a certified interval of
+        negative width, and feed a negative relative gap into every check that
+        asks whether the gap is small enough. Both are worse than saying zero.
+        """
+        return max(0.0, self.upper - self.lower)
 
     @property
     def relative_width(self) -> float:

@@ -63,6 +63,7 @@ import pyomo.environ as pyo
 
 from psopt_course.config import fast_mode, set_seed
 from psopt_course.decomposition import BoundHistory, ConvergenceTest, relative_gap
+from psopt_course.metrics import certified_interval
 from psopt_course.networks import radial_feeder
 from psopt_course.plotting import COLORS, use_course_style
 from psopt_course.relaxations import SOCBFM
@@ -454,11 +455,23 @@ gap_relaxation = relative_gap(z_soc, z_ac)
 print(f"Benders convergence gap (within the SOC model): {gap_bd:.3e}")
 print(f"relaxation gap  (SOC lower vs AC feasible)    : {gap_relaxation:.3e}")
 print()
+# Built through certified_interval rather than printed by hand. Two things
+# follow from that. Its guard raises if the "lower" bound genuinely exceeds the
+# "upper" one, instead of letting an EMPTY interval be printed as a valid
+# certificate. And its width is clamped at zero, so the last-digit crossing
+# between two independent IPOPT solves (here z_SOC exceeds z_AC by ~7e-08)
+# reports as "the bounds coincide" rather than as a negative width dressed up
+# by abs() -- which is what this cell used to do.
+interval = certified_interval(
+    z_soc, z_ac,
+    lower_source="Benders on the SOC relaxation",
+    upper_source="Benders on the AC subproblem",
+)
 print(f"    LB_SOC = {z_soc:.8f}")
 print(f"    UB_AC  = {z_ac:.8f}")
-print(f"    certified interval width = {abs(z_ac - z_soc):.3e}")
+print(f"    certified interval width = {interval.width:.3e}")
 print()
-if abs(z_ac - z_soc) < 1e-6:
+if interval.width < 1e-6:
     print("On this instance the SOC relaxation is tight, so the two bounds")
     print("coincide and the AC optimum is certified. That is a property of this")
     print("feeder and this objective, not a general guarantee — Tutorial 05's")

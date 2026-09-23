@@ -477,7 +477,22 @@ assert abs(_total - 100.0) < 1e-6, f"balance violated by {abs(_total - 100.0):.3
 for _g in quadratic_model.G:
     _v = pyo.value(quadratic_model.p[_g])
     assert pyo.value(quadratic_model.p_min[_g]) - 1e-6 <= _v <= pyo.value(quadratic_model.p_max[_g]) + 1e-6
-print("Checks passed: balance holds and both units are within limits.")
+# The claim of this exercise is equal INCREMENTAL cost, so check that and not
+# only feasibility. Balance and box limits alone are satisfied by the LP
+# vertex too, which is why they passed while the optimum was pinned at a
+# ceiling and the marginal costs differed by 22.8 EUR/MWh.
+_mc = {
+    _g: pyo.value(quadratic_model.c1[_g])
+    + 2 * pyo.value(quadratic_model.c2[_g]) * pyo.value(quadratic_model.p[_g])
+    for _g in quadratic_model.G
+}
+_spread = max(_mc.values()) - min(_mc.values())
+assert _spread < 1e-6, (
+    f"marginal costs differ by {_spread:.4f} EUR/MWh, so the optimum is NOT "
+    f"interior and the equal-incremental-cost rule does not apply here: {_mc}"
+)
+print("Checks passed: balance holds, both units are within limits, and their")
+print(f"marginal costs agree to {_spread:.2e} EUR/MWh.")
 
 # %% [markdown]
 # #### Interpretation

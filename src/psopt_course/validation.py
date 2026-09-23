@@ -25,6 +25,8 @@ import numpy as np
 import pandas as pd
 import pyomo.environ as pyo
 
+from psopt_course import tolerances as tol
+
 __all__ = [
     "PowerFlowCheck",
     "ResidualReport",
@@ -40,7 +42,7 @@ class ResidualReport:
     """Worst-case violation of each constraint block in a solved model."""
 
     worst: dict[str, float] = field(default_factory=dict)
-    tolerance: float = 1e-6
+    tolerance: float = tol.EQUALITY_FEASIBILITY
 
     @property
     def feasible(self) -> bool:
@@ -60,7 +62,9 @@ class ResidualReport:
         return f"{len(offenders)} block(s) violated: {', '.join(sorted(offenders)[:5])}"
 
 
-def constraint_residuals(model, tolerance: float = 1e-6) -> ResidualReport:
+def constraint_residuals(
+    model, tolerance: float = tol.EQUALITY_FEASIBILITY
+) -> ResidualReport:
     """Largest violation within each named constraint block.
 
     Reported per *block* rather than per constraint index, because a name like
@@ -212,12 +216,14 @@ def bounds_table(
     same shape. The unifying claim is that they are all squeezing the same
     interval.
     """
-    if lower > upper + 1e-9:
+    # The same guard metrics.CertifiedInterval uses. An earlier 1e-9 here was
+    # tighter than either solve and rejected bounds that agreed to 7.6e-08.
+    if not tol.bound_holds(lower, upper):
         raise ValueError(
             f"{lower_label} ({lower:.6g}) exceeds {upper_label} ({upper:.6g}); "
             "for a minimization that is impossible, so one of them is wrong"
         )
-    gap = upper - lower
+    gap = max(0.0, upper - lower)
     relative = gap / max(1.0, abs(upper))
     return pd.DataFrame(
         {

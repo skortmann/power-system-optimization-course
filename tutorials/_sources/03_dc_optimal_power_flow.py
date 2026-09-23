@@ -435,7 +435,9 @@ def dc_opf_ptdf(system) -> pyo.ConcreteModel:
     pass
 
 
-ptdf_model = None
+# The validation cell below checks these three names, so build them:
+ptdf_model = None       # the ConcreteModel returned by dc_opf_ptdf(system)
+ptdf_record = None      # the SolveRecord from solving it
 
 # %% tags=["solution"]
 def dc_opf_ptdf(system) -> pyo.ConcreteModel:

@@ -279,7 +279,10 @@ if abs(difference) <= tolerance:
     print("bound is attained and the sign of a 1e-12 difference means nothing.")
 else:
     print(f"bound holds: z_SOC <= z_BFM  ->  {z_soc <= z_exact + tolerance}")
-print(f"objective gap: {relaxation_gap(min(z_soc, z_exact), max(z_exact, z_soc)):.6%}")
+# Passed in the stated order, not sorted. Sorting would defeat
+# relaxation_gap's own guard and quietly relabel the AC number as the
+# SOC lower bound whenever solver noise crosses them.
+print(f"objective gap: {relaxation_gap(z_soc, z_exact):.6%}")
 
 residuals = soc.soc_residuals()
 worst = max(residuals.values())
@@ -401,7 +404,9 @@ def soc_slack(P, Q, u, ell):
     pass
 
 
-my_residuals = None
+# The validation cell below checks both of these, so build them:
+my_residuals = None     # {branch: slack} for the RELAXED model, from soc_slack
+exact_residuals = None  # the same for the EXACT model, where it must be ~0
 
 # %% tags=["solution"]
 def soc_slack(P, Q, u, ell):
@@ -461,7 +466,7 @@ print("Checks passed: inequality in the relaxation, equality in the original.")
 # %% tags=["solution"]
 print("ANSWER. No, and the two questions are not even about the same thing.")
 print()
-print(f"Here the objective gap is {relaxation_gap(z_soc, max(z_exact, z_soc)):.4%} and the")
+print(f"Here the objective gap is {relaxation_gap(z_soc, z_exact):.4%} and the")
 print(f"maximum cone residual is {max(my_residuals.values()):.2e}, so on THIS instance")
 print("both say the same thing: the relaxation is tight.")
 print()
@@ -510,7 +515,10 @@ print("builds a case where the relaxation is visibly NOT tight.")
 
 # %% tags=["exercise"]
 # TODO: solve the relaxation with a constant objective and measure exactness.
-broken = None
+# The validation cell below checks all three names, so build them:
+broken = None            # the SOCBFM built with a constant objective
+broken_record = None     # the SolveRecord from solving it
+broken_residuals = None  # broken.soc_residuals()
 
 # %% tags=["solution"]
 broken = SOCBFM(copy.deepcopy(net), current_definition="soc")
